@@ -1,5 +1,5 @@
 const fs=require('fs');
-const SPR_LIT=fs.readFileSync('/home/claude/spr_literal.txt','utf8');
+const SPR_LIT=fs.readFileSync(require('path').join(__dirname,'spr_literal.txt'),'utf8');
 
 const CSS=`
   :root{--bg:#10101c;--panel:#1d1d33;--panel-line:#5a5a8c;--ink:#e6e6d8;
@@ -138,6 +138,10 @@ const BODY=`
       </div>
       <div id="equipList"></div>
     </div>
+    <div class="card">
+      <h3>ぼうけんの ばしょ</h3>
+      <div id="areaList"></div>
+    </div>
     <div class="baseBtns">
       <button class="btn sm" id="shopBtn">🏪 みせ・かじや</button>
       <button class="btn" id="goBtn">⚔ ぼうけんに でる</button>
@@ -236,26 +240,46 @@ const JS=`
     else if(name==='flee'){beep(720,0.05,'square');beep(500,0.07,'square',0.05);}
   }
 
-  var ENEMIES=[
-    {key:'slime',name:'スライム',hp:18,atk:5,def:0,exp:5,gold:6,fl:'ぷるぷる ふるえている。',
+  var MONSTERS={
+    slime:{name:'スライム',hp:18,atk:5,def:0,exp:5,gold:6,fl:'ぷるぷる ふるえている。',
       drops:[{t:'weapon',k:'copper',r:12},{t:'ring',k:'heal',r:3}]},
-    {key:'mushroom',name:'マッシュ',hp:22,atk:6,def:0,exp:7,gold:8,fl:'ほうしを まきちらす。',
+    mushroom:{name:'マッシュ',hp:22,atk:6,def:0,exp:7,gold:8,fl:'ほうしを まきちらす。',
       drops:[{t:'weapon',k:'copper',r:14}]},
-    {key:'goblin',name:'ゴブリン',hp:28,atk:8,def:1,exp:8,gold:11,fl:'こんぼうを ふりまわす。',
+    goblin:{name:'ゴブリン',hp:28,atk:8,def:1,exp:8,gold:11,fl:'こんぼうを ふりまわす。',
       drops:[{t:'weapon',k:'copper',r:30},{t:'armor',k:'leather',r:25}]},
-    {key:'wolf',name:'ウルフ',hp:32,atk:9,def:1,exp:12,gold:14,fl:'きばを むきだしている。',
+    wolf:{name:'ウルフ',hp:32,atk:9,def:1,exp:12,gold:14,fl:'きばを むきだしている。',
       drops:[{t:'weapon',k:'steel',r:10},{t:'armor',k:'leather',r:18}]},
-    {key:'bat',name:'おおこうもり',hp:26,atk:8,def:0,exp:12,gold:14,fl:'すばやく とびまわる。',
+    bat:{name:'おおこうもり',hp:26,atk:8,def:0,exp:12,gold:14,fl:'すばやく とびまわる。',
       drops:[{t:'weapon',k:'steel',r:8},{t:'ring',k:'bolt',r:4}]},
-    {key:'mage',name:'まどうし',hp:34,atk:9,def:1,exp:16,gold:20,caster:true,fl:'つえに まりょくを ためている…',
+    mage:{name:'まどうし',hp:34,atk:9,def:1,exp:16,gold:20,caster:true,fl:'つえに まりょくを ためている…',
       drops:[{t:'ring',k:'bolt',r:10},{t:'ring',k:'flame',r:8}]},
-    {key:'skeleton',name:'がいこつけんし',hp:46,atk:11,def:2,exp:18,gold:24,fl:'カタカタと わらっている。',
+    skeleton:{name:'がいこつけんし',hp:46,atk:11,def:2,exp:18,gold:24,fl:'カタカタと わらっている。',
       drops:[{t:'armor',k:'chain',r:30},{t:'weapon',k:'steel',r:25},{t:'armor',k:'plate',r:8}]},
-    {key:'golem',name:'ゴーレム',hp:64,atk:13,def:5,exp:26,gold:34,fl:'いわの からだが きしむ。',
+    golem:{name:'ゴーレム',hp:64,atk:13,def:5,exp:26,gold:34,fl:'いわの からだが きしむ。',
       drops:[{t:'armor',k:'plate',r:30},{t:'armor',k:'chain',r:25},{t:'armor',k:'dragonmail',r:6}]},
-    {key:'dragon',name:'ドラゴン',hp:95,atk:16,def:3,exp:44,gold:85,fl:'ぜんしんから ほのおが もれている…！',boss:true,
+    // ---- ボス ----
+    kingslime:{name:'キングスライム',hp:72,atk:12,def:2,exp:30,gold:50,boss:true,fl:'むすうの スライムが まとまった おうじゃ！',
+      drops:[{t:'armor',k:'leather',r:100},{t:'weapon',k:'steel',r:35},{t:'ring',k:'heal',r:25}]},
+    minotaur:{name:'ミノタウロス',hp:120,atk:17,def:4,exp:50,gold:80,boss:true,fl:'おおおのを かまえ いきりたっている！',
+      drops:[{t:'weapon',k:'steel',r:100},{t:'armor',k:'chain',r:50},{t:'ring',k:'bolt',r:30},{t:'armor',k:'plate',r:14}]},
+    dragon:{name:'ドラゴン',hp:140,atk:19,def:5,exp:60,gold:120,boss:true,fl:'ぜんしんから ほのおが もれている…！',
       drops:[{t:'weapon',k:'flame',r:100},{t:'weapon',k:'fang',r:25},{t:'armor',k:'dragonmail',r:40},{t:'ring',k:'flame',r:30},{t:'ring',k:'bolt',r:15}]}
+  };
+  var AREAS=[
+    {id:'forest',name:'はじまりの もり',scale:1,
+      bg:'linear-gradient(#1c2e1a,#16240f 60%,#0e1c0a)',
+      list:['slime','mushroom','goblin','wolf','bat'],boss:'kingslime',
+      bossLine:['もりの ぬしが','ゆくてを ふさいだ！']},
+    {id:'cave',name:'まよいの どうくつ',scale:1.15,
+      bg:'linear-gradient(#26283a,#1a1c2e 60%,#101220)',
+      list:['bat','wolf','mage','skeleton'],boss:'minotaur',
+      bossLine:['どうくつの おくから','すさまじい きはいが ちかづく。']},
+    {id:'castle',name:'りゅうの しろ',scale:1.3,
+      bg:'linear-gradient(#2e1a26,#22121c 60%,#160e16)',
+      list:['skeleton','mage','golem'],boss:'dragon',
+      bossLine:['しろの さいおくで','りゅうが めを さました…！']}
   ];
+  function areaSeq(i){return AREAS[i].list.concat([AREAS[i].boss]);}
   var INV={weapon:{store:'weapons',table:WEAPONS,stat:'atk',enh:'weapon'},
            armor:{store:'armors',table:ARMORS,stat:'def',enh:'armor'},
            ring:{store:'rings',table:RINGS}};
@@ -274,7 +298,7 @@ const JS=`
   function resetPlayer(){P={lv:1,exp:0,clears:0,gold:0,herb:3,ether:0,
     weapons:['stick'],equipped:'stick',armors:['cloth'],armor:'cloth',
     rings:['none'],ring:'none',familiars:[],familiar:'none',
-    enh:{weapon:{},armor:{}},fam:{},hp:30,mp:8};}
+    enh:{weapon:{},armor:{}},fam:{},area:0,unlocked:1,hp:30,mp:8};}
 
   var SAVE_KEY='rpg_save_v1';
   function storageOK(){try{var k='__rpgtest';localStorage.setItem(k,'1');localStorage.removeItem(k);return true;}catch(e){return false;}}
@@ -289,6 +313,8 @@ const JS=`
     d.familiars=d.familiars||[];d.familiar=d.familiar||'none';
     d.enh=d.enh||{};d.enh.weapon=d.enh.weapon||{};d.enh.armor=d.enh.armor||{};
     d.fam=d.fam||{};(d.familiars||[]).forEach(function(k){if(!d.fam[k])d.fam[k]={xp:0,lv:1,evolved:false};});
+    d.unlocked=clamp(d.unlocked||1,1,AREAS.length);
+    d.area=clamp(d.area||0,0,d.unlocked-1);
     d.hp=maxHpFor(d.lv);d.mp=maxMpFor(d.lv);return d;
   }
   function loadGame(){
@@ -296,7 +322,7 @@ const JS=`
     try{var s=localStorage.getItem(SAVE_KEY);if(!s)return false;P=normalize(JSON.parse(s));return true;}catch(e){return false;}
   }
 
-  var stage=0,enemy=null,guarding=false,busy=false,dragonTurn=0,runExp=0,runGold=0,runDrops=[],runRec=[];
+  var stage=0,seq=[],enemy=null,guarding=false,busy=false,dragonTurn=0,runExp=0,runGold=0,runDrops=[],runRec=[];
   function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
   function rnd(n){return Math.floor(Math.random()*n);}
 
@@ -331,10 +357,12 @@ const JS=`
 
   function startBattle(){
     enemyBox(true);
-    var d=ENEMIES[stage];
-    enemy={key:d.key,sprite:d.key,name:d.name,hp:d.hp,max:d.hp,atk:d.atk,def:d.def,exp:d.exp,gold:d.gold,boss:!!d.boss,caster:!!d.caster,metal:false,drops:d.drops};
+    var key=seq[stage],d=MONSTERS[key],sc=d.boss?1:(AREAS[P.area].scale||1);
+    enemy={key:key,sprite:key,name:d.name,hp:Math.round(d.hp*sc),max:Math.round(d.hp*sc),
+      atk:Math.round(d.atk*sc),def:d.def,exp:Math.round(d.exp*sc),gold:Math.round(d.gold*sc),
+      boss:!!d.boss,caster:!!d.caster,metal:false,drops:d.drops};
     if(!d.boss&&Math.random()<0.07){enemy.key='metal';enemy.name='はぐれメタル';enemy.metal=true;
-      enemy.hp=12;enemy.max=12;enemy.def=40;enemy.atk=Math.max(2,Math.floor(d.atk/2));
+      enemy.hp=12;enemy.max=12;enemy.def=40;enemy.atk=Math.max(2,Math.floor(enemy.atk/2));
       enemy.exp=d.exp*8;enemy.gold=d.gold*5;enemy.drops=[];enemy.caster=false;}
     dragonTurn=0; document.getElementById('enemyName').textContent=enemy.name;
     var ec=document.getElementById('eSprite');draw('eSprite',enemy.sprite);ec.classList.toggle('metal',enemy.metal);
@@ -346,7 +374,7 @@ const JS=`
     else fc.style.display='none';
     refresh();
     var intro=enemy.metal?['はぐれメタルが あらわれた！','すばやくて すぐ にげそうだ…']
-      :(d.boss?['ついに さいごの たたかい！',d.name+'が たちはだかった！',d.fl]:[d.name+'が あらわれた！',d.fl]);
+      :(d.boss?[d.name+'が たちはだかった！',d.fl]:[d.name+'が あらわれた！',d.fl]);
     if(enemy.metal)sfx('coin');
     say(intro,showCommands);
   }
@@ -411,7 +439,8 @@ const JS=`
     var lines=[],dmg,kind='atk';
     if(enemy.boss){dragonTurn++;if(dragonTurn%3===0||rnd(100)<25)kind='fire';}
     else if(enemy.caster&&rnd(100)<35)kind='cast';
-    if(kind==='fire'){dmg=Math.floor((enemy.atk+rnd(5))*1.6);lines.push(enemy.name+'は ほのおを はいた！');}
+    if(kind==='fire'){dmg=Math.floor((enemy.atk+rnd(5))*1.6);
+      lines.push(enemy.name+'は '+(enemy.key==='dragon'?'ほのおを はいた！':enemy.key==='kingslime'?'たいあたりを かました！':'おおおのを ふりおろした！'));}
     else if(kind==='cast'){dmg=Math.floor((enemy.atk+rnd(4))*1.4);lines.push(enemy.name+'は じゅもんを となえた！');}
     else{dmg=enemy.atk+rnd(4);lines.push(enemy.name+'の こうげき！');}
     var def=totalDef();if(kind==='cast')def=Math.floor(def/2);
@@ -432,7 +461,7 @@ const JS=`
     var rec=FAMILIARS[enemy.key]&&Math.random()*100<FAMILIARS[enemy.key].rate;if(rec)runRec.push(enemy.key);
     var lines;
     if(enemy.metal)lines=['はぐれメタルを たおした！','けいけんち +'+enemy.exp+' / '+g+'ゴールド！','すごい！ おおあたり！'];
-    else if(enemy.boss)lines=['ドラゴンに とどめの いちげき！','ドラゴンは ほのおを のこして きえた…',g+'ゴールドを てにいれた！'];
+    else if(enemy.boss)lines=[enemy.name+'に とどめの いちげき！',enemy.name+'は ちからつきて たおれた…','けいけんち +'+enemy.exp+' / '+g+'ゴールド！'];
     else lines=[enemy.name+'を たおした！','けいけんち +'+enemy.exp+' / '+g+'ゴールド！'];
     drops.forEach(function(dr){var nm=(dr.t==='weapon')?WEAPONS[dr.k].name:(dr.t==='armor')?ARMORS[dr.k].name:RINGS[dr.k].name;
       lines.push(enemy.name+'は '+nm+'を おとした！');});
@@ -447,11 +476,12 @@ const JS=`
   }
 
   function afterVictory(){
-    stage++;if(stage>=ENEMIES.length){returnToBase('clear');return;}
+    stage++;if(stage>=seq.length){returnToBase('clear');return;}
+    var nextBoss=!!MONSTERS[seq[stage]].boss;
     var goNext=function(){
-      if(ENEMIES[stage].boss)say(['…どうくつの おくから','すさまじい きはいが ちかづく。'],startBattle);
+      if(nextBoss)say(AREAS[P.area].bossLine||['…おくから','すさまじい きはいが ちかづく。'],startBattle);
       else say(['さきへ すすもう。'],startBattle);};
-    if(!ENEMIES[stage].boss&&Math.random()<0.5)runEvent(goNext);else goNext();
+    if(!nextBoss&&Math.random()<0.5)runEvent(goNext);else goNext();
   }
 
   // ---------- どうちゅうイベント ----------
@@ -536,12 +566,21 @@ const JS=`
     runRec.forEach(function(k){if(P.familiars.indexOf(k)===-1){P.familiars.push(k);
       if(!P.fam[k])P.fam[k]={xp:0,lv:1,evolved:false};
       var act=false;if(P.familiar==='none'){P.familiar=k;act=true;}newFam.push({name:FAMILIARS[k].name,act:act});}});
-    if(reason==='clear')P.clears++;
+    var newArea=null;
+    if(reason==='clear'){
+      var isLast=(P.area===AREAS.length-1);
+      if(isLast)P.clears++;
+      if(P.area+1<AREAS.length&&P.unlocked<P.area+2){P.unlocked=P.area+2;newArea=AREAS[P.area+1].name;}
+    }
 
     var sum=document.getElementById('summary');sum.style.display='block';
     sum.className=(reason==='clear')?'card win':'card lose';
-    document.getElementById('sumHead').textContent=(reason==='clear')?('ドラゴンを たおした！（クリア '+P.clears+'かいめ）'):'ゆうしゃは たおれた…';
+    var bossNm=MONSTERS[AREAS[P.area].boss].name;
+    document.getElementById('sumHead').textContent=(reason==='clear')
+      ?(bossNm+'を たおした！'+((P.area===AREAS.length-1)?'（クリア '+P.clears+'かいめ）':''))
+      :'ゆうしゃは たおれた…';
     var L=[];L.push('けいけんち +'+runExp+' ／ '+runGold+'ゴールド');
+    if(newArea)L.push('あたらしい エリア「'+newArea+'」が ひらかれた！');
     if(ups>0)L.push('レベルが LV'+beforeLv+' → LV'+P.lv+' に あがった！');else L.push('つぎのLVまで のこり '+(expNeed(P.lv)-P.exp));
     newItems.forEach(function(it){if(it.up)L.push('もちものの 「'+it.name+'」に きょうか された！');
       else L.push('「'+it.name+'」を てにいれた！'+(it.eqd?'（そうび）':''));});
@@ -566,7 +605,22 @@ const JS=`
     document.getElementById('bRF').textContent=(P.ring==='none'?'なし':RINGS[P.ring].name)+' / '+(P.familiar==='none'?'なし':famDisplayName(P.familiar)+' Lv'+famLevelOf(P.familiar));
     document.getElementById('bClears').textContent=P.clears+' かい';
     renderEquip();
+    renderAreas();
     saveGame();
+  }
+  function renderAreas(){
+    var list=document.getElementById('areaList');list.innerHTML='';
+    AREAS.forEach(function(a,i){
+      var locked=i>=P.unlocked;
+      var d=document.createElement('div');
+      d.className='item'+(P.area===i?' eq':'')+(locked?' no':'');
+      var meta=locked?'🔒 みかいほう':(MONSTERS[a.boss].name+' が まつ');
+      d.innerHTML='<span>'+a.name+' <span class="meta" style="color:var(--mp)">'+meta+'</span></span>'+
+        '<span class="tag" style="color:'+(locked?'var(--dim)':(P.area===i?'var(--gold)':'var(--dim)'))+'">'+
+        (locked?'ロック':(P.area===i?'せんたく中':'タップ'))+'</span>';
+      if(!locked)d.addEventListener('click',function(){P.area=i;renderBase();});
+      list.appendChild(d);
+    });
   }
   function renderEquip(){
     var list=document.getElementById('equipList');list.innerHTML='';
@@ -615,7 +669,9 @@ const JS=`
   }
 
   function startRun(){document.getElementById('summary').style.display='none';
-    P.hp=maxHpFor(P.lv);P.mp=maxMpFor(P.lv);stage=0;runExp=0;runGold=0;runDrops=[];runRec=[];busy=false;
+    P.hp=maxHpFor(P.lv);P.mp=maxMpFor(P.lv);seq=areaSeq(P.area);stage=0;
+    runExp=0;runGold=0;runDrops=[];runRec=[];busy=false;
+    document.getElementById('stage').style.background=AREAS[P.area].bg;
     show('battle');startBattle();try{window.scrollTo(0,0);}catch(e){}}
   function begin(){resetPlayer();document.getElementById('summary').style.display='none';curTab='weapon';
     document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('on',x.dataset.tab==='weapon');});
@@ -651,5 +707,6 @@ const HTML='<!DOCTYPE html>\n<html lang="ja">\n<head>\n<meta charset="UTF-8">\n'
 '<link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet">\n'+
 '<style>'+CSS+'</style>\n</head>\n<body>\n<div id="game">\n'+BODY+'\n</div>\n<script>'+JS+'</scr'+'ipt>\n</body>\n</html>';
 
-fs.writeFileSync('/home/claude/rpg.html',HTML);
+fs.writeFileSync(require('path').join(__dirname,'rpg.html'),HTML);
+fs.writeFileSync(require('path').join(__dirname,'dragon-rpg.html'),HTML);
 console.log('html written, bytes=',HTML.length);

@@ -213,6 +213,60 @@ const SPR={};
   SPR.golem=rows(g);
 })();
 
+// ---------- KING SLIME（もりのボス） ----------
+(function(){
+  const g=mk();
+  // おうかん
+  S(g,6,2,'y');S(g,6,3,'y');S(g,8,2,'y');S(g,8,3,'y');S(g,10,3,'y');
+  row(g,4,6,11,'y');row(g,5,6,11,'o');
+  S(g,8,4,'r'); // ほうせき
+  // からだ
+  const body=[[6,8,11],[7,6,11],[8,5,11],[9,4,11],[10,4,11],
+             [11,3,11],[12,3,11],[13,3,11],[14,3,11],[15,3,11],
+             [16,3,11],[17,3,11],[18,4,11],[19,4,11],[20,5,11],[21,7,11]];
+  body.forEach(([y,a,b])=>row(g,y,a,b,'g'));
+  // したを こく
+  row(g,19,4,11,'G');row(g,20,5,11,'G');row(g,21,7,11,'G');
+  // ハイライト
+  S(g,6,10,'w');S(g,7,10,'w');S(g,6,11,'w');
+  mirror(g);
+  // め
+  rect(g,7,13,8,15,'w');rect(g,15,13,16,15,'w');
+  rect(g,8,14,8,15,'e');rect(g,15,14,15,15,'e');
+  // くち
+  row(g,18,9,14,'k');S(g,8,17,'k');S(g,15,17,'k');
+  SPR.kingslime=rows(g);
+})();
+
+// ---------- MINOTAUR（どうくつのボス） ----------
+(function(){
+  const g=mk();
+  // つの（しろ）
+  S(g,5,5,'n');S(g,4,4,'n');S(g,3,3,'n');S(g,2,3,'n');S(g,2,2,'w');
+  // あたま
+  const head=[[5,6,11],[6,5,11],[7,5,11],[8,5,11],[9,5,11],[10,5,11]];
+  head.forEach(([y,a,b])=>row(g,y,a,b,'d'));
+  // あたまの け（こい）
+  row(g,5,9,11,'k');S(g,6,11,'k');
+  // はな・くち（あかるい）
+  rect(g,8,11,11,12,'s');
+  // どう
+  const body=[[13,6,11],[14,5,11],[15,4,11],[16,4,11],[17,4,11]];
+  body.forEach(([y,a,b])=>row(g,y,a,b,'d'));
+  // むねの かげ
+  for(let y=13;y<=17;y++)S(g,11,y,'k');
+  // うで
+  rect(g,2,13,3,18,'d');S(g,2,19,'s');S(g,3,19,'s');
+  // あし
+  rect(g,5,18,7,22,'d');row(g,22,5,7,'k');
+  mirror(g);
+  // め（あか）
+  rect(g,7,9,8,9,'r');rect(g,15,9,16,9,'r');
+  // はなのあな
+  S(g,10,12,'k');S(g,13,12,'k');
+  SPR.minotaur=rows(g);
+})();
+
 // 出力（検証）
 let bad=0;
 Object.keys(SPR).forEach(n=>{
@@ -232,5 +286,5 @@ Object.keys(SPR).forEach(n=>{
 const lit='var SPR={\n'+Object.keys(SPR).map(n=>{
   return '  '+n+':['+SPR[n].map(r=>JSON.stringify(r)).join(',')+']';
 }).join(',\n')+'\n};';
-require('fs').writeFileSync('/home/claude/spr_literal.txt',lit);
+require('fs').writeFileSync(require('path').join(__dirname,'spr_literal.txt'),lit);
 console.log('\nliteral written');
