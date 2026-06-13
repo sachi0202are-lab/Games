@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>パンヒーローをタッチ！</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #87CEEB;
+    font-family: "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none; user-select: none;
+    touch-action: none;
+  }
+  #game { display: block; width: 100vw; height: 100vh; }
+  #counter {
+    position: fixed; top: 12px; left: 0; right: 0;
+    text-align: center;
+    font-size: 26px; font-weight: bold;
+    color: #fff;
+    text-shadow: 2px 2px 0 #E8482B, -2px 2px 0 #E8482B, 2px -2px 0 #E8482B, -2px -2px 0 #E8482B;
+    pointer-events: none;
+  }
+  #hint {
+    position: fixed; bottom: 18px; left: 0; right: 0;
+    text-align: center;
+    font-size: 18px; font-weight: bold;
+    color: #fff;
+    text-shadow: 1px 1px 0 #f49, -1px 1px 0 #f49, 1px -1px 0 #f49, -1px -1px 0 #f49;
+    pointer-events: none;
+    animation: blink 1.2s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="counter">タッチ： 0 かい</div>
+<div id="hint">▶ パンヒーローを タッチしてね！</div>
+<script>
+(function () {
+  "use strict";
+
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const counterEl = document.getElementById("counter");
+  const hintEl = document.getElementById("hint");
+
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  // ---- ヒーローの状態 ----
+  const hero = {
+    x: 0, y: 0,        // 中心座標（計算で更新）
+    baseScale: 1,      // 画面サイズに応じた基本の大きさ
+    r: 90,             // 顔の半径（baseScaleで調整）
+    vy: 0,             // ジャンプの速度
+    jumpOffset: 0,     // ジャンプによる上下のずれ
+    squash: 0,         // つぶれ具合（0=ふつう）
+    face: "smile",     // smile / happy / wink / surprised
+    faceTimer: 0,
+    wobble: 0          // ゆれ
+  };
+
+  function layout() {
+    hero.baseScale = Math.min(W, H) / 480;
+    hero.r = 90 * hero.baseScale;
+    hero.x = W / 2;
+    hero.y = H / 2;
+  }
+  layout();
+  window.addEventListener("resize", layout);
+
+  // ---- パーティクル（星・ハート） ----
+  const particles = [];
+  function spawnParticles(cx, cy) {
+    const n = 8 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < n; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const sp = (2 + Math.random() * 4) * hero.baseScale;
+      particles.push({
+        x: cx, y: cy,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp - 2 * hero.baseScale,
+        life: 1,
+        size: (10 + Math.random() * 14) * hero.baseScale,
+        kind: Math.random() < 0.5 ? "star" : "heart",
+        color: pick(["#FFD93B", "#FF6B6B", "#FF9F43", "#6BCB77", "#4D96FF"]),
+        rot: Math.random() * Math.PI * 2,
+        vrot: (Math.random() - 0.5) * 0.3
+      });
+    }
+  }
+  function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+
+  // ---- 効果音（Web Audio） ----
+  let actx = null;
+  function ensureAudio() {
+    if (!actx) {
+      try { actx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch (e) { actx = null; }
+    }
+    if (actx && actx.state === "suspended") actx.resume();
+  }
+  // ぴょん、という上がる音
+  function playBoing() {
+    if (!actx) return;
+    const t = actx.currentTime;
+    const osc = actx.createOscillator();
+    const gain = actx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(280, t);
+    osc.frequency.exponentialRampToValueAtTime(720, t + 0.12);
+    osc.frequency.exponentialRampToValueAtTime(440, t + 0.22);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.5, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    osc.connect(gain); gain.connect(actx.destination);
+    osc.start(t); osc.stop(t + 0.36);
+  }
+  // きらきら音
+  function playSparkle() {
+    if (!actx) return;
+    const t = actx.currentTime;
+    const notes = [880, 1175, 1568];
+    notes.forEach((f, i) => {
+      const osc = actx.createOscillator();
+      const gain = actx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = f;
+      const st = t + i * 0.05;
+      gain.gain.setValueAtTime(0.0001, st);
+      gain.gain.exponentialRampToValueAtTime(0.25, st + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, st + 0.2);
+      osc.connect(gain); gain.connect(actx.destination);
+      osc.start(st); osc.stop(st + 0.22);
+    });
+  }
+
+  // ---- タッチ判定 ----
+  let count = 0;
+  const faces = ["happy", "wink", "surprised", "smile"];
+
+  function isHit(px, py) {
+    const dx = px - hero.x;
+    const dy = py - (hero.y - hero.jumpOffset);
+    return (dx * dx + dy * dy) <= (hero.r * 1.15) * (hero.r * 1.15);
+  }
+
+  function touchHero() {
+    count++;
+    counterEl.textContent = "タッチ： " + count + " かい";
+    hintEl.style.display = "none";
+
+    // ジャンプ！
+    hero.vy = -16 * hero.baseScale;
+    hero.squash = 0.35;
+    hero.face = faces[Math.floor(Math.random() * faces.length)];
+    hero.faceTimer = 0.6;
+    hero.wobble = 1;
+
+    spawnParticles(hero.x, hero.y - hero.jumpOffset - hero.r * 0.3);
+    ensureAudio();
+    playBoing();
+    playSparkle();
+
+    // バイブ（対応端末のみ）
+    if (navigator.vibrate) navigator.vibrate(30);
+  }
+
+  function pointerDown(px, py) {
+    ensureAudio();
+    if (isHit(px, py)) touchHero();
+  }
+
+  canvas.addEventListener("touchstart", function (e) {
+    e.preventDefault();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const r = canvas.getBoundingClientRect();
+      pointerDown(e.changedTouches[i].clientX - r.left, e.changedTouches[i].clientY - r.top);
+    }
+  }, { passive: false });
+
+  canvas.addEventListener("mousedown", function (e) {
+    const r = canvas.getBoundingClientRect();
+    pointerDown(e.clientX - r.left, e.clientY - r.top);
+  });
+
+  // ---- 描画 ----
+  let clouds = [];
+  function initClouds() {
+    clouds = [];
+    for (let i = 0; i < 4; i++) {
+      clouds.push({
+        x: Math.random() * W,
+        y: 40 + Math.random() * (H * 0.4),
+        s: (0.6 + Math.random() * 0.8) * hero.baseScale,
+        sp: (0.2 + Math.random() * 0.3) * hero.baseScale
+      });
+    }
+  }
+  initClouds();
+  window.addEventListener("resize", initClouds);
+
+  function drawCloud(c) {
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    const u = 26 * c.s;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, u, 0, Math.PI * 2);
+    ctx.arc(c.x + u, c.y + 6 * c.s, u * 0.8, 0, Math.PI * 2);
+    ctx.arc(c.x - u, c.y + 6 * c.s, u * 0.8, 0, Math.PI * 2);
+    ctx.arc(c.x, c.y + 10 * c.s, u * 0.9, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawStar(p) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.beginPath();
+    const s = p.size;
+    for (let i = 0; i < 5; i++) {
+      const a = (i * 4 * Math.PI) / 5 - Math.PI / 2;
+      const x = Math.cos(a) * s, y = Math.sin(a) * s;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawHeart(p) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = Math.max(0, p.life);
+    const s = p.size * 0.9;
+    ctx.beginPath();
+    ctx.moveTo(0, s * 0.35);
+    ctx.bezierCurveTo(s, -s * 0.5, s * 0.6, -s, 0, -s * 0.4);
+    ctx.bezierCurveTo(-s * 0.6, -s, -s, -s * 0.5, 0, s * 0.35);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawHero() {
+    const cx = hero.x;
+    const cy = hero.y - hero.jumpOffset;
+    const r = hero.r;
+
+    // squash & stretch
+    const sq = hero.squash;
+    const sx = 1 + sq * 0.5;
+    const sy = 1 - sq * 0.5;
+    const wob = Math.sin(performance.now() / 90) * hero.wobble * 0.06;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(wob);
+    ctx.scale(sx, sy);
+
+    // 影（地面）
+    ctx.save();
+    ctx.scale(1 / sx, 1 / sy);
+    const shY = hero.jumpOffset + r * 1.15;
+    const shScale = Math.max(0.4, 1 - hero.jumpOffset / (r * 4));
+    ctx.fillStyle = "rgba(0,0,0,0.12)";
+    ctx.beginPath();
+    ctx.ellipse(0, shY, r * 0.8 * shScale, r * 0.22 * shScale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // 体（マント風のまる）
+    ctx.fillStyle = "#E8482B";
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.95, r * 0.85, r * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 顔（パン色）
+    const grd = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.2, 0, 0, r);
+    grd.addColorStop(0, "#FCE2A8");
+    grd.addColorStop(1, "#E8A95C");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ほっぺ
+    ctx.fillStyle = "#FF7B6B";
+    ctx.beginPath();
+    ctx.arc(-r * 0.55, r * 0.12, r * 0.26, 0, Math.PI * 2);
+    ctx.arc(r * 0.55, r * 0.12, r * 0.26, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 鼻
+    const noseGrd = ctx.createRadialGradient(-r * 0.06, -r * 0.06, r * 0.02, 0, 0, r * 0.2);
+    noseGrd.addColorStop(0, "#FF8A7A");
+    noseGrd.addColorStop(1, "#E8482B");
+    ctx.fillStyle = noseGrd;
+    ctx.beginPath();
+    ctx.arc(0, r * 0.1, r * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 目と口（表情）
+    ctx.fillStyle = "#3a2a1a";
+    const eyeY = -r * 0.22;
+    const eyeX = r * 0.34;
+    const f = hero.face;
+
+    if (f === "wink") {
+      // 片目ウインク
+      ctx.beginPath();
+      ctx.ellipse(-eyeX, eyeY, r * 0.1, r * 0.16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = r * 0.06; ctx.strokeStyle = "#3a2a1a";
+      ctx.beginPath();
+      ctx.moveTo(eyeX - r * 0.12, eyeY);
+      ctx.lineTo(eyeX + r * 0.12, eyeY);
+      ctx.stroke();
+    } else if (f === "happy") {
+      // にっこり（^ ^）
+      ctx.lineWidth = r * 0.06; ctx.strokeStyle = "#3a2a1a";
+      ctx.lineCap = "round";
+      [-eyeX, eyeX].forEach(function (ex) {
+        ctx.beginPath();
+        ctx.moveTo(ex - r * 0.13, eyeY + r * 0.05);
+        ctx.lineTo(ex, eyeY - r * 0.08);
+        ctx.lineTo(ex + r * 0.13, eyeY + r * 0.05);
+        ctx.stroke();
+      });
+    } else if (f === "surprised") {
+      // びっくり（大きい目）
+      [-eyeX, eyeX].forEach(function (ex) {
+        ctx.beginPath();
+        ctx.arc(ex, eyeY, r * 0.16, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    } else {
+      // ふつうの目
+      [-eyeX, eyeX].forEach(function (ex) {
+        ctx.beginPath();
+        ctx.ellipse(ex, eyeY, r * 0.1, r * 0.15, 0, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+
+    // 口
+    ctx.strokeStyle = "#7a2a1a";
+    ctx.lineWidth = r * 0.05;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    if (f === "surprised") {
+      ctx.fillStyle = "#7a2a1a";
+      ctx.beginPath();
+      ctx.ellipse(0, r * 0.5, r * 0.16, r * 0.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // にこっと笑った口
+      ctx.beginPath();
+      ctx.arc(0, r * 0.34, r * 0.3, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  // ---- メインループ ----
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+
+    // 物理（ジャンプ）
+    const gravity = 60 * hero.baseScale;
+    if (hero.jumpOffset > 0 || hero.vy < 0) {
+      hero.vy += gravity * dt * 8;
+      hero.jumpOffset -= hero.vy * dt * 8;
+      if (hero.jumpOffset <= 0) {
+        hero.jumpOffset = 0;
+        if (hero.vy > 4 * hero.baseScale) { hero.squash = 0.3; } // 着地でつぶれる
+        hero.vy = 0;
+      }
+    }
+    // squash を戻す
+    hero.squash += (0 - hero.squash) * Math.min(1, dt * 10);
+    // wobble 減衰
+    hero.wobble += (0 - hero.wobble) * Math.min(1, dt * 3);
+    // 表情タイマー
+    if (hero.faceTimer > 0) {
+      hero.faceTimer -= dt;
+      if (hero.faceTimer <= 0) hero.face = "smile";
+    }
+
+    // 雲を流す
+    for (const c of clouds) {
+      c.x += c.sp;
+      if (c.x - 60 * c.s > W) c.x = -60 * c.s;
+    }
+
+    // パーティクル更新
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy;
+      p.vy += 0.25 * hero.baseScale;
+      p.rot += p.vrot;
+      p.life -= dt * 1.4;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+
+    // 背景
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, "#8AD4F0");
+    bg.addColorStop(1, "#C8F0E0");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    for (const c of clouds) drawCloud(c);
+
+    drawHero();
+
+    for (const p of particles) {
+      if (p.kind === "star") drawStar(p); else drawHeart(p);
+    }
+    ctx.globalAlpha = 1;
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
