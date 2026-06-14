@@ -30,8 +30,8 @@
   .blink{animation:blink 1s steps(2,start) infinite;}
   @keyframes blink{to{visibility:hidden;}}
 
-  #base,#shop,#select{display:none;flex-direction:column;background:linear-gradient(#1a1226,#120f20);padding:10px;}
-  #base h2,#shop h2,#select h2{color:var(--gold);font-size:15px;text-align:center;margin-bottom:6px;}
+  #base,#shop,#select,#slots{display:none;flex-direction:column;background:linear-gradient(#1a1226,#120f20);padding:10px;}
+  #base h2,#shop h2,#select h2,#slots h2{color:var(--gold);font-size:15px;text-align:center;margin-bottom:6px;}
   .card{background:var(--panel);border:3px solid var(--panel-line);padding:7px 9px;margin-bottom:7px;}
   .card h3{font-size:11px;color:var(--gold);margin-bottom:4px;border-bottom:2px solid var(--panel-line);padding-bottom:3px;}
   .row{display:flex;justify-content:space-between;font-size:12px;padding:1px 0;}
@@ -54,7 +54,9 @@
   .item .tag{font-size:10px;}
   .baseBtns{display:flex;gap:8px;justify-content:center;margin-top:2px;}
 
-  #select{gap:10px;padding:14px 10px;}
+  #select,#slots{gap:10px;padding:14px 10px;}
+  #slots .card{margin-bottom:0;}
+  #slots .row b{color:var(--gold);}
   .chars{display:flex;flex-direction:column;gap:10px;}
   .charCard{display:flex;gap:10px;align-items:center;background:var(--panel);
     border:3px solid var(--panel-line);padding:8px;cursor:pointer;}
@@ -122,10 +124,15 @@
     <h1>ストリート<br>チャンピオン</h1>
     <div class="sub">〜 ぜんたいかい せいは の みち 〜</div>
     <div style="display:flex;flex-direction:column;gap:10px;align-items:center;">
-      <button class="btn" id="contBtn" style="display:none;">▶ つづきから</button>
-      <button class="btn blink" id="newBtn">＋ はじめから</button>
+      <button class="btn blink" id="startBtn">▶ はじめる</button>
     </div>
-    <div class="sub" style="font-size:10px;" id="saveNote">ホームに もどると じどうで セーブされます。</div>
+    <div class="sub" style="font-size:10px;" id="saveNote">3つの スロットに セーブできます。</div>
+  </div>
+
+  <div id="slots">
+    <h2>セーブスロット</h2>
+    <div class="chars" id="slotList"></div>
+    <button class="btn sm" id="slotBack" style="align-self:center;">← もどる</button>
   </div>
 
   <div id="select">
@@ -244,16 +251,23 @@
   // ---- えらべる しゅじんこう ----
   var CHARS={
     jin:{name:'ジン',spr:'jin',move:'きこうけん',
-      desc:'ながれの からてか。すべて へいきんで つかいやすい。（ドリンク+2）',
+      desc:'ながれの からてか。HP・こうげき・き すべて へいきん。スタート:ドリンク+2',
       kit:function(){P.herb+=2;}},
     dandy:{name:'ダンディ',spr:'dandy',move:'コークスクリュー',
-      desc:'えいこくの しんしボクサー。パンチが おもい。（レザーグローブ）',
+      desc:'じゅうりょうきゅうボクサー。HPと こうげきが たかい。きは すくなめ。スタート:レザーグローブ',
       kit:function(){P.weapons.push('leather');P.equipped='leather';}},
     neo:{name:'ネオ',spr:'neo',move:'サイコパンチ',
-      desc:'サイコパワーの しょうねん。ひっさつわざが とくい。（はどうの まき）',
+      desc:'サイコパワーの しょうねん。きが おおく ひっさつ れんぱつ。HPは ひくめ。スタート:はどうの まき',
       kit:function(){P.rings.push('hadou');P.ring='hadou';}}
   };
   var CHARORDER=['jin','dandy','neo'];
+  // キャラごとの せいのうさ（flat ＋ レベルごとの のび）
+  var CHARMOD={
+    jin:{hp:0,hpg:0,mp:0,mpg:0,atk:0,atkg:0},
+    dandy:{hp:8,hpg:2,mp:-2,mpg:-1,atk:2,atkg:1},
+    neo:{hp:-4,hpg:-1,mp:6,mpg:2,atk:0,atkg:0}
+  };
+  function cmod(char){return CHARMOD[char]||CHARMOD.jin;}
   function hn(){return (CHARS[P.char]&&CHARS[P.char].name)||'ファイター';}
   function curMove(){return (CHARS[P.char]&&CHARS[P.char].move)||'ひっさつ';}
 
@@ -342,9 +356,9 @@
            ring:{store:'rings',table:RINGS}};
 
   var P={};
-  function maxHpFor(lv){return 30+(lv-1)*8;}
-  function maxMpFor(lv){return 8+(lv-1)*3;}
-  function atkFor(lv){return 6+(lv-1)*2;}
+  function maxHpFor(lv,char){var m=cmod(char||P.char);return 30+(lv-1)*8+m.hp+(lv-1)*m.hpg;}
+  function maxMpFor(lv,char){var m=cmod(char||P.char);return 8+(lv-1)*3+m.mp+(lv-1)*m.mpg;}
+  function atkFor(lv,char){var m=cmod(char||P.char);return 6+(lv-1)*2+m.atk+(lv-1)*m.atkg;}
   function expNeed(lv){return lv*12;}
   function wPlus(){return P.enh.weapon[P.equipped]||0;}
   function aPlus(){return P.enh.armor[P.armor]||0;}
@@ -360,9 +374,12 @@
     P.hp=maxHpFor(P.lv);P.mp=maxMpFor(P.lv);}
 
   var SAVE_KEY='champ_save_v1';
+  var SLOTS=3,curSlot=0;
+  function slotKey(i){return SAVE_KEY+'_'+i;}
   function storageOK(){try{var k='__champtest';localStorage.setItem(k,'1');localStorage.removeItem(k);return true;}catch(e){return false;}}
   var HAS_STORAGE=storageOK();
-  function saveGame(){if(!HAS_STORAGE)return;try{localStorage.setItem(SAVE_KEY,JSON.stringify(P));}catch(e){}}
+  function saveGame(){if(!HAS_STORAGE)return;try{localStorage.setItem(slotKey(curSlot),JSON.stringify(P));}catch(e){}}
+  function slotMeta(i){if(!HAS_STORAGE)return null;try{var s=localStorage.getItem(slotKey(i));return s?JSON.parse(s):null;}catch(e){return null;}}
   function normalize(d){
     d.lv=d.lv||1;d.exp=d.exp||0;d.clears=d.clears||0;d.gold=d.gold||0;
     d.char=(CHARS[d.char]?d.char:'jin');
@@ -375,11 +392,11 @@
     d.fam=d.fam||{};(d.familiars||[]).forEach(function(k){if(!d.fam[k])d.fam[k]={xp:0,lv:1,evolved:false};});
     d.unlocked=clamp(d.unlocked||1,1,AREAS.length);
     d.area=clamp(d.area||0,0,d.unlocked-1);
-    d.hp=maxHpFor(d.lv);d.mp=maxMpFor(d.lv);return d;
+    d.hp=maxHpFor(d.lv,d.char);d.mp=maxMpFor(d.lv,d.char);return d;
   }
-  function loadGame(){
-    if(!HAS_STORAGE)return false;
-    try{var s=localStorage.getItem(SAVE_KEY);if(!s)return false;P=normalize(JSON.parse(s));return true;}catch(e){return false;}
+  function loadGame(i){
+    curSlot=i;if(!HAS_STORAGE)return false;
+    try{var s=localStorage.getItem(slotKey(i));if(!s)return false;P=normalize(JSON.parse(s));return true;}catch(e){return false;}
   }
 
   var stage=0,seq=[],enemy=null,guarding=false,busy=false,dragonTurn=0,runExp=0,runGold=0,runDrops=[],runRec=[];
@@ -388,10 +405,11 @@
 
   var elTitle=document.getElementById('title'),elBase=document.getElementById('base'),
       elBattle=document.getElementById('battle'),elShop=document.getElementById('shop'),
-      elSelect=document.getElementById('select');
+      elSelect=document.getElementById('select'),elSlots=document.getElementById('slots');
   function show(w){elTitle.style.display=w==='title'?'flex':'none';
     elBase.style.display=w==='base'?'flex':'none';elBattle.style.display=w==='battle'?'flex':'none';
-    elShop.style.display=w==='shop'?'flex':'none';elSelect.style.display=w==='select'?'flex':'none';}
+    elShop.style.display=w==='shop'?'flex':'none';elSelect.style.display=w==='select'?'flex':'none';
+    elSlots.style.display=w==='slots'?'flex':'none';}
 
   var win=document.getElementById('window'),msgEl=document.getElementById('msg'),
       cursor=document.getElementById('cursor'),cmdBox=document.getElementById('commands');
@@ -755,15 +773,37 @@
     document.querySelectorAll('.tab').forEach(function(x){x.classList.toggle('on',x.dataset.tab==='weapon');});
     renderBase();show('base');try{window.scrollTo(0,0);}catch(e){}}
 
-  var hasSave=false,newArmed=false;
-  var contBtn=document.getElementById('contBtn'),newBtn=document.getElementById('newBtn');
-  newBtn.addEventListener('click',function(){
-    if(hasSave&&!newArmed){newArmed=true;newBtn.textContent='きえます！ もういちど タップ';
-      setTimeout(function(){newArmed=false;newBtn.textContent='＋ はじめから';},2500);return;}
-    startSelect();
-  });
-  document.getElementById('selBack').addEventListener('click',function(){show('title');});
-  contBtn.addEventListener('click',function(){renderBase();show('base');try{window.scrollTo(0,0);}catch(e){}});
+  // ---------- セーブスロット ----------
+  function renderSlots(){
+    var L=document.getElementById('slotList');L.innerHTML='';
+    for(var i=0;i<SLOTS;i++){(function(i){
+      var d=slotMeta(i),card=document.createElement('div');card.className='card';
+      var info=document.createElement('div');info.className='row';
+      var btns=document.createElement('div');btns.className='baseBtns';btns.style.marginTop='6px';
+      if(d){
+        var cn=(CHARS[d.char]&&CHARS[d.char].name)||'ファイター';
+        info.innerHTML='<b>スロット'+(i+1)+'</b><span>'+cn+' / LV'+(d.lv||1)+' / せいは'+(d.clears||0)+'</span>';
+        var cont=document.createElement('button');cont.className='btn sm';cont.textContent='▶ つづきから';
+        cont.addEventListener('click',function(){sfx('select');if(loadGame(i)){renderBase();show('base');try{window.scrollTo(0,0);}catch(e){}}});
+        var del=document.createElement('button');del.className='btn sm';del.style.borderColor='var(--hp)';del.style.color='var(--hp)';del.textContent='けす';
+        var armed=false;
+        del.addEventListener('click',function(){if(!armed){armed=true;del.textContent='ほんとに けす？';setTimeout(function(){armed=false;del.textContent='けす';},2500);return;}
+          try{localStorage.removeItem(slotKey(i));}catch(e){}sfx('select');renderSlots();});
+        btns.appendChild(cont);btns.appendChild(del);
+      }else{
+        info.innerHTML='<b>スロット'+(i+1)+'</b><span style="color:var(--dim)">あき</span>';
+        var nw=document.createElement('button');nw.className='btn sm';nw.textContent='＋ はじめから';
+        nw.addEventListener('click',function(){sfx('select');curSlot=i;startSelect();});
+        btns.appendChild(nw);
+      }
+      card.appendChild(info);card.appendChild(btns);L.appendChild(card);
+    })(i);}
+  }
+  function startSlots(){renderSlots();show('slots');try{window.scrollTo(0,0);}catch(e){}}
+
+  document.getElementById('startBtn').addEventListener('click',startSlots);
+  document.getElementById('slotBack').addEventListener('click',function(){show('title');});
+  document.getElementById('selBack').addEventListener('click',startSlots);
   document.getElementById('goBtn').addEventListener('click',startRun);
   document.getElementById('shopBtn').addEventListener('click',function(){renderShop();show('shop');try{window.scrollTo(0,0);}catch(e){}});
   document.getElementById('shopBack').addEventListener('click',function(){renderBase();show('base');try{window.scrollTo(0,0);}catch(e){}});
@@ -774,8 +814,7 @@
   sndBtn.addEventListener('click',function(){soundOn=!soundOn;try{localStorage.setItem('champ_sound',soundOn?'1':'0');}catch(e){}updSnd();if(soundOn)sfx('select');});
 
   if(!HAS_STORAGE)document.getElementById('saveNote').textContent='※ ここでは セーブできません（ダウンロードして ひらくと セーブされます）。';
-  hasSave=loadGame();
-  if(hasSave)contBtn.style.display='block';
+  show('title');
 })();
 </script>
 </body>
